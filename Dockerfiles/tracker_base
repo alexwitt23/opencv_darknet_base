@@ -36,7 +36,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Setup spinnaker
-COPY spinnaker /data/sources/spinnaker
+COPY ./spinnaker /data/sources/spinnaker
 
 WORKDIR /data/sources/spinnaker
 RUN sh install_spinnaker.sh
