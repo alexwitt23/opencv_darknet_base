@@ -1,0 +1,102 @@
+# Start from cuda/cudnn docker image
+FROM nvidia/cuda:10.0-cudnn7-devel-ubuntu18.04
+
+# Install dependencies
+RUN apt-get update \
+    && apt-get install -y \
+        build-essential \
+        pkg-config \
+        git \
+        wget \
+        curl \
+        unzip \
+	cmake \
+        tar \
+        spin \
+        libjsoncpp-dev \ 
+        libtbb2 \ 
+        libtbb-dev \
+        libgtk2.0-dev \
+	libavcodec-dev \
+        libavformat-dev \
+        libswscale-dev \
+        libavformat-dev \
+        libpq-dev \
+        libavcodec57 \
+        libavformat57 \
+        libswscale4 \ 
+        libswresample2 \ 
+        libavutil55 \
+        libusb-1.0-0 \
+        libgtkmm-2.4-dev \
+	libglu1-mesa \
+	qt5-default \
+	mesa-utils \
+	libgl1-mesa-glx \
+    && rm -rf /var/lib/apt/lists/*
+
+# Setup spinnaker
+COPY spinnaker /data/sources/spinnaker
+
+WORKDIR /data/sources/spinnaker
+RUN sh install_spinnaker.sh
+
+WORKDIR /
+
+# Get OpenCV
+ENV OPENCV_VERSION="4.0.1"
+RUN curl -sL https://github.com/opencv/opencv/archive/${OPENCV_VERSION}.zip > opencv.zip \
+&& unzip opencv.zip 
+
+# Get OpenCV contrib modules
+RUN echo 'DOWNLOADING OPENCV CONTRIB' \
+&& curl -sL https://github.com/Itseez/opencv_contrib/archive/${OPENCV_VERSION}.zip > opencv_contrib.zip \
+&& unzip opencv_contrib.zip
+
+# Compile Opencv
+RUN echo 'COMPILING OPENCV' \
+&& cd /opencv-${OPENCV_VERSION} && mkdir build && cd build \
+&& cmake -D CMAKE_BUILD_TYPE=RELEASE \     
+         -D CMAKE_INSTALL_PREFIX=/usr/local \      
+         -D INSTALL_C_EXAMPLES=OFF \
+         -D INSTALL_PYTHON_EXAMPLES=OFF \     
+         -D WITH_TBB=ON \   
+         -D WITH_V4L=ON \     
+         -D WITH_QT=OFF \  
+         -D WITH_OPENGL=ON \      
+         -D WITH_GSTREAMER=ON \      
+         -D WITH_CUDA=ON \
+         -D WITH_NVCUVID=ON \  
+         -D ENABLE_FAST_MATH=1 \    
+         -D CUDA_FAST_MATH=1 \ 
+         -D WITH_CUBLAS=ON \
+         -D WITH_GTK=ON \
+         -D CUDA_NVCC_FLAGS="-D_FORCE_INLINES" \   
+         -D BUILD_opencv_cudacodec=ON \
+         -D OPENCV_GENERATE_PKGCONFIG=YES \
+         -D OPENCV_EXTRA_MODULES_PATH=../../opencv_contrib-${OPENCV_VERSION}/modules \  
+         -D BUILD_EXAMPLES=OFF .. \
+      && make -j8 \
+      && make install \
+      && ldconfig
+
+# Clean up
+RUN  rm -r opencv-${OPENCV_VERSION} \
+     && rm -r opencv_contrib-${OPENCV_VERSION} \
+     && rm opencv.zip \
+     && rm opencv_contrib.zip
+
+# Create sym link to darknet will compile
+RUN ln -s /usr/local/lib/pkgconfig/opencv4.pc /usr/local/lib/pkgconfig/opencv.pc
+
+WORKDIR /data/sources
+
+# Compile Darknet
+RUN git clone https://github.com/TerraClear/darknet.git \
+    && cd darknet \
+    && git checkout test \
+    && make \
+    && ln -s /data/sources/darknet/libdarknet.so /usr/local/lib/libdarknet.so
+
+# Get libterraclear
+RUN git clone https://github.com/TerraClear/libterraclear.git
